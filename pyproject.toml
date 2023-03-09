@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "nekos-api"
+version = "0.1.0"
+description = "A Python wrapper for Nekos API."
+authors = ["Neki <84998222+Nekidev@users.noreply.github.com>"]
+license = "MIT License"
+readme = "README.md"
+packages = [{include = "nekos_api"}]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+requests = "^2.28.2"
+python-dateutil = "^2.8.2"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.2.2"
+black = "^23.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
