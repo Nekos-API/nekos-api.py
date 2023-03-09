@@ -12,30 +12,11 @@ import urllib.parse
 import requests
 import dateutil
 
+from .pagination import PaginatedResult
+from .ratelimiting import prevent_ratelimit
 from .types import VerificationStatus
 from .utils import to_camel_case
 from .exceptions import UnspecifiedResourceError
-
-
-# The time the last request was made. Since the API only allows 2 requests per
-# second, this variable is used to prevent 429 status codes.
-last_request: typing.Optional[datetime] = None
-
-
-def prevent_ratelimit(func):
-    """
-    Waits until a new request can be made without getting a 429 status code.
-    """
-
-    def wrapper(*args, **kwargs):
-        global last_request
-
-        if last_request:
-            time.sleep((datetime.now() - last_request).total_seconds())
-
-        return func(*args, **kwargs)
-
-    return wrapper
 
 
 def image_property(func: typing.Callable):
@@ -245,19 +226,72 @@ class Image:
         params = {}
 
         for key in filters.keys():
-            query_name = f"filter[{'.'.join([to_camel_case(i) for i in key.split('__', 1)])}]"
+            query_name = (
+                f"filter[{'.'.join([to_camel_case(i) for i in key.split('__', 1)])}]"
+            )
             params[query_name] = filters[key]
 
         r = requests.get(
             f"https://api.nekosapi.com/v2/images/random",
             headers={"Accept": "application/vnd.api+json"},
-            params=params
+            params=params,
         )
         r.raise_for_status()
 
         return Image(data=r.json())
-    
-    def search(**filters) -> 
+
+    def search(
+        sort: typing.Union[typing.List[str], str, type(None)] = None,
+        included: typing.Union[typing.List[str], str, type(None)] = None,
+        **filters,
+    ) -> PaginatedResult:
+        """
+        Search for an image.
+
+        You can pass the filters as arguments with a double underscore (`__`)
+        separating the field name from the lookup method. For example,
+        `age_rating__iexact`. To use the filter without the lookup method, just
+        omit the `__lookup` part of the filter. For example, `age_rating`.
+
+        You can also prefetch related resources like the artist or characters
+        by specifying the `included` argument. `included="artist"` will
+        prefetch the artist resource, so no request will be made when you
+        access `image.artist`. To prefetch multiple related resources, you will
+        need to use a list instead of a string. E.g.
+        `included=["artist", "characters"]` will prefetch both artists and
+        characters.
+
+        To sort results, you can use the `sort` argument. `sort="createdAt"`
+        will sort the results by the date the resource was created. Prepending
+        a `-` character to the name will reverse the order and the results will
+        be sorted descendingly. You can also use a list to sort by multiple
+        properties. E.g. `sort=["-createdAt", "title"]` will sort items using
+        `-createdAt` and sort the items with the same `createdAt` by the title
+        in alphabetical order.
+        """
+
+        params = {}
+
+        for key in filters.keys():
+            query_name = (
+                f"filter[{'.'.join([to_camel_case(i) for i in key.split('__', 1)])}]"
+            )
+            params[query_name] = filters[key]
+
+        if isinstance(sort, str):
+            params["sort"] = sort
+        elif isinstance(sort, list):
+            params["sort"] = ",".join(sort)
+
+        if isinstance(included, str):
+            params["included"] = included
+        elif isinstance(included, list):
+            params["included"] = ",".join(included)
+        
+        return PaginatedResult(
+            url="https://api.nekosapi.com/v2/images",
+            params=params
+        )
 
     @prevent_ratelimit
     def _load(self):
