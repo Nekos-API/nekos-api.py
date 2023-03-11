@@ -18,9 +18,14 @@ def test_random_image():
 
 def test_search_image():
     imgs = Image.search(age_rating__iexact='sfw')
-    print("First")
-    imgs[2:5]
-    print("Second")
-    imgs[2:5]
-    print("Third")
+    imgs.page_size = 25
     
+    i = 0
+    while i in range(50):
+        image = next(imgs)
+        assert image.age_rating == AgeRating.SAFE_FOR_WORK
+        i += 1
+
+def test_uploader():
+    image: Image = Image.random()
+    uploader = image.uploader
