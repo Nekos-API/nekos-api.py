@@ -11,7 +11,7 @@ import dateutil
 from .pagination import PaginatedResult
 from .ratelimiting import prevent_ratelimit
 from .types import VerificationStatus, AgeRating
-from .utils import to_camel_case, to_dasherized
+from .utils import to_camel_case, to_dasherized, to_snake_case_from_dasherized
 from .exceptions import UnspecifiedResourceError
 
 
@@ -78,6 +78,64 @@ def resource_relationship(func: typing.Callable):
                     raise Exception(
                         f"There is no relationship named `{related_resource_name}`."
                     )
+                else:
+                    # There is data for the relationship, so a check is made to
+                    # use included resources if there are any.
+                    if obj._data.get("included", None) is not None:
+                        included_resources = obj._data["included"]
+                        related_resources = (
+                            relationship_data["data"]
+                            if isinstance(relationship_data["data"], list)
+                            else [relationship_data["data"]]
+                        )
+
+                        resources = []
+
+                        for included_resource in included_resources:
+                            for related_resource in related_resources:
+                                if (
+                                    included_resource["type"]
+                                    == related_resource["type"]
+                                    and included_resource["id"]
+                                    == related_resource["id"]
+                                ):
+                                    # The resource is the same so it is added
+                                    # to the `preloaded_resources` list.
+                                    resources.append(included_resource)
+
+                        resources += [
+                            resource
+                            for resource in related_resources
+                            if resource["id"]
+                            not in [item["id"] for item in included_resources]
+                        ]
+
+                        if isinstance(relationship_data["data"], list):
+                            # There are many related resources. Some may have
+                            # not been included.
+                            obj._loaded_relationships[related_resource_name] = [
+                                TYPE_TO_CLASS[item["type"]](
+                                    data={"data": item, "included": included_resources}
+                                )
+                                if item.get("attributes", None) is not None
+                                else TYPE_TO_CLASS[item["type"]](id=item["id"])
+                                for item in resources
+                            ]
+                            return func(*args, **kwargs)
+
+                        elif len(resources) > 0:
+                            # The relationship is a one-to-one or one-to-many
+                            # relationship so only one resource can be
+                            # included.
+                            obj._loaded_relationships[
+                                related_resource_name
+                            ] = TYPE_TO_CLASS[item["type"]](
+                                data={
+                                    "data": resources[0],
+                                    "included": included_resources,
+                                }
+                            )
+                            return func(*args, **kwargs)
 
                 links = relationship_data.get("links", None)
 
@@ -140,9 +198,7 @@ def resource_relationship(func: typing.Callable):
                     related_resource_name
                 ] = initialized_resources[0]
             else:
-                obj._loaded_relationships[
-                    related_resource_name
-                ] = initialized_resources
+                obj._loaded_relationships[related_resource_name] = initialized_resources
 
         return func(*args, **kwargs)
 
@@ -223,6 +279,23 @@ class Resource:
 
         # Prevent from being refetched from the API.
         self._loaded = True
+
+    def is_loaded(self):
+        """
+        Returns wether the resource has been loaded or not.
+        """
+        return self._loaded
+
+    def is_relationship_loaded(self, relationship_name: str):
+        """
+        Returns wether a specific relationship has been loaded or not.
+        """
+        return (
+            self._loaded_relationships.get(
+                to_snake_case_from_dasherized(relationship_name), None
+            )
+            is not None
+        )
 
 
 class Image(Resource):
