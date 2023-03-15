@@ -157,10 +157,10 @@ def resource_relationship(func: typing.Callable):
                 if links is not None:
                     related_resource_url = links["related"]
                 else:
-                    related_resource_url = f"https://api.nekosapi.com/v2/{obj.resource_name}/{obj.id}/{related_resource_name}"
+                    related_resource_url = f"https://api.nekosapi.com/v2/{obj.resource_name_plural}/{obj.id}/{related_resource_name}"
 
             else:
-                related_resource_url = f"https://api.nekosapi.com/v2/{obj.resource_name}/{obj.id}/{related_resource_name}"
+                related_resource_url = f"https://api.nekosapi.com/v2/{obj.resource_name_plural}/{obj.id}/{related_resource_name}"
 
             prevent_ratelimit()
 
@@ -212,6 +212,7 @@ class Resource:
     """
 
     resource_name: str
+    resource_name_plural: str
 
     def __init__(self, *args, **kwargs) -> None:
         """
@@ -219,6 +220,11 @@ class Resource:
         """
         self._loaded: bool = False
         self._loaded_relationships = {}
+
+        self.headers = {
+            "Accept": "application/vnd.api+json"
+        }
+        self.params = {}
 
         if "id" in kwargs:
             self._id = (
@@ -259,8 +265,9 @@ class Resource:
 
         try:
             r = requests.get(
-                f"https://api.nekosapi.com/v2/{self.resource_name}/{urllib.parse.quote(str(self.id))}",
-                headers={"Accept": "application/vnd.api+json"},
+                f"https://api.nekosapi.com/v2/{self.resource_name_plural}/{urllib.parse.quote(str(self.id))}",
+                headers=self.headers,
+                params=self.params,
             )
             r.raise_for_status()
 
@@ -290,12 +297,34 @@ class Resource:
         """
         Returns wether a specific relationship has been loaded or not.
         """
-        return (
-            self._loaded_relationships.get(
-                to_snake_case_from_dasherized(relationship_name), None
+        return to_dasherized(relationship_name) in self._loaded_relationships
+
+    def include(self, *relationships: typing.Tuple[str]) -> "Resource":
+        """
+        If a resource has not been loaded, using this method will add
+        relationships to the `included` parameter to reduce the amount of
+        requests needed to fetch the resource's data and it's relationships.
+        """
+        return self
+
+    @prevent_ratelimit
+    def fetch_relationships(self, *relationships: typing.Tuple[str]):
+        """
+        Makes a request to the API's resource endpoint with the `include`
+        parameter to fetch many relationships at once.
+        """
+        # TODO: Finish this :3
+        if len(relationships) == 1:
+            # Only one relationship to fetch, so the relationship endpoint is
+            # used.
+            r = requests.get(
+                f"https://api.nekosapi.com/v2/{self.resource_name}/{self.id}/{to_dasherized(relationships[0])}",
+                headers=self.headers,
+                params=self.params
             )
-            is not None
-        )
+            r.raise_for_status()
+
+            
 
 
 class Image(Resource):
@@ -305,6 +334,7 @@ class Image(Resource):
     """
 
     resource_name = "image"
+    resource_name_plural = "images"
 
     @property
     @resource_property
@@ -429,11 +459,11 @@ class Image(Resource):
 
     @property
     @resource_relationship
-    def uploader(self) -> object:
+    def uploader(self) -> User:
         """
         The user who uploaded the image to the API.
         """
-        pass
+        return self._loaded_relationships["uploader"]
 
     @prevent_ratelimit
     def get(id: typing.Union[UUID, str]) -> "Image":
@@ -534,6 +564,7 @@ class User(Resource):
     queries to the API or to represent an image resource.
     """
 
-    resource_name = "name"
+    resource_name = "user"
+    resource_name_plural = "users"
 
     pass
