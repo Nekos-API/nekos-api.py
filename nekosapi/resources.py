@@ -315,7 +315,9 @@ class Resource:
         return self
 
     @prevent_ratelimit
-    def fetch_relationships(self, *relationships: typing.Tuple[str], ignore_loaded: bool = False):
+    def fetch_relationships(
+        self, *relationships: typing.Tuple[str], ignore_loaded: bool = False
+    ):
         """
         Makes a request to the API's resource endpoint with the `include`
         parameter to fetch many relationships at once.
@@ -330,7 +332,12 @@ class Resource:
         params.update(
             {
                 "include": ",".join(
-                [to_dasherized(relationship) for relationship in relationships if ignore_loaded or not self.is_relationship_loaded(relationship)]
+                    [
+                        to_dasherized(relationship)
+                        for relationship in relationships
+                        if ignore_loaded
+                        or not self.is_relationship_loaded(relationship)
+                    ]
                 )
             }
         )
@@ -352,24 +359,36 @@ class Resource:
 
             if isinstance(refs, list):
                 self._loaded_relationships[relationship] = []
-                
-                ids = [
-                    ref["id"] for ref in refs
-                ]
+
+                ids = [ref["id"] for ref in refs]
 
                 for resource in data["included"]:
-                    if resource["id"] in ids and resource["type"] == refs[ids.index(resource["id"])]["type"]:
+                    if (
+                        resource["id"] in ids
+                        and resource["type"] == refs[ids.index(resource["id"])]["type"]
+                    ):
                         self._loaded_relationships[relationship].append(
                             TYPE_TO_CLASS[resource["type"]](
-                                data={"data": resource, "included": data.get("included", None)}
+                                data={
+                                    "data": resource,
+                                    "included": data.get("included", None),
+                                }
                             )
                         )
-            
+
             elif isinstance(refs, dict):
                 for resource in data["included"]:
-                    if resource["id"] == refs["id"] and resource["type"] == refs["type"]:
-                        self._loaded_relationships[relationship] = TYPE_TO_CLASS[resource["type"]](
-                            data={"data": resource, "included": data.get("included", None)}
+                    if (
+                        resource["id"] == refs["id"]
+                        and resource["type"] == refs["type"]
+                    ):
+                        self._loaded_relationships[relationship] = TYPE_TO_CLASS[
+                            resource["type"]
+                        ](
+                            data={
+                                "data": resource,
+                                "included": data.get("included", None),
+                            }
                         )
                         break
 
@@ -377,7 +396,7 @@ class Resource:
                 # There is no resource, so no extra serialization needs to be
                 # made. `None` is returned directly.
                 self._loaded_relationships[relationship] = None
-        
+
         return self
 
     @prevent_ratelimit
@@ -533,7 +552,9 @@ class Image(Resource):
         return self._loaded_relationships["uploader"]
 
     @prevent_ratelimit
-    def random(shared_resource_token: typing.Optional[str] = None, **filters) -> "Image":
+    def random(
+        shared_resource_token: typing.Optional[str] = None, **filters
+    ) -> "Image":
         """
         Returns a random image.
 
@@ -624,4 +645,105 @@ class User(Resource):
     resource_name = "user"
     resource_name_plural = "users"
 
-    pass
+    @property
+    @resource_property
+    def username(self) -> str:
+        """
+        The username of the user.
+        """
+        return self._data["data"]["attributes"]["username"]
+
+    @property
+    @resource_property
+    def nickname(self) -> typing.Optional[str]:
+        """
+        The nickname of the user.
+        """
+        return self._data["data"]["attributes"]["nickname"]
+
+    @property
+    @resource_property
+    def name(self) -> str:
+        """
+        The name of the user.
+        """
+
+        class Name:
+            first = property(
+                lambda get: self._data["data"]["attributes"]["name"]["first"]
+                if "name" in self._data["data"]["attributes"]
+                else None
+            )
+            last = property(
+                lambda get: self._data["data"]["attributes"]["name"]["last"]
+                if "name" in self._data["data"]["attributes"]
+                else None
+            )
+
+        return Name()
+
+    @property
+    @resource_property
+    def avatar(self) -> str:
+        """
+        The avatar URL of the user.
+        """
+        return self._data["data"]["attributes"]["avatarImage"]
+
+    @property
+    @resource_property
+    def biography(self) -> str:
+        """
+        The biography of the user.
+        """
+        return self._data["data"]["attributes"]["biography"]
+
+    @property
+    @resource_property
+    def email(self) -> typing.Optional[str]:
+        """
+        The email of the user.
+        """
+        return self._data["data"]["attributes"]["email"]
+
+    @property
+    @resource_property
+    def secret_key(self) -> typing.Optional[str]:
+        """
+        The secret key of the user.
+        """
+        return self._data["data"]["attributes"]["secretKey"]
+
+    @property
+    @resource_property
+    def permissions(self) -> object:
+        """
+        The permissions of the user.
+        """
+
+        class Permissions:
+            is_active = property(
+                lambda get: self._data["data"]["attributes"]["permissions"]["isActive"]
+            )
+            is_staff = property(
+                lambda get: self._data["data"]["attributes"]["permissions"]["isStaff"]
+            )
+            is_superuser = property(
+                lambda get: self._data["data"]["attributes"]["permissions"][
+                    "isSuperuser"
+                ]
+            )
+
+        return Permissions()
+
+    @property
+    @resource_property
+    def timestamps(self) -> object:
+        """
+        The timestamps of the user.
+        """
+
+        class Timestamps:
+            joined = property(lambda get: self._data["data"]["attributes"]["joined"])
+
+        return Timestamps()
