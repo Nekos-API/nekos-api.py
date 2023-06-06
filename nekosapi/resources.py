@@ -131,7 +131,7 @@ def resource_relationship(func: typing.Callable):
                             # included.
                             obj._loaded_relationships[
                                 related_resource_name
-                            ] = TYPE_TO_CLASS[item["type"]](
+                            ] = TYPE_TO_CLASS[resources[0]["type"]](
                                 data={
                                     "data": resources[0],
                                     "included": included_resources,
@@ -277,8 +277,10 @@ class Resource:
         self._load_from_resource(r.json())
 
     def _load_from_resource(self, data: dict):
-        """
-        Loads all the resource's properties to the object.
+        """Loads all the resource's properties to the object.
+
+        Args:
+            data (dict): The resource's data. Must have a `data` key in the top level.
         """
 
         self._id = UUID(data["data"]["id"])
@@ -286,6 +288,8 @@ class Resource:
 
         # Prevent from being refetched from the API.
         self._loaded = True
+
+        return True
 
     def is_loaded(self):
         """
@@ -311,38 +315,83 @@ class Resource:
         return self
 
     @prevent_ratelimit
-    def fetch_relationships(self, *relationships: typing.Tuple[str]):
+    def fetch_relationships(self, *relationships: typing.Tuple[str], ignore_loaded: bool = False):
         """
         Makes a request to the API's resource endpoint with the `include`
         parameter to fetch many relationships at once.
         """
+        if len(relationships) == 0:
+            return
+
         # Imported here to avoid a circular import error.
         from .constants import TYPE_TO_CLASS
 
-        for relationship in relationships:
-            # Only one relationship to fetch, so the relationship endpoint is
-            # used.
-            r = requests.get(
-                f"https://api.nekosapi.com/v2/{self.resource_name}/{self.id}/{to_dasherized(relationship)}",
-                headers=self.headers,
-                params=self.params,
-            )
-            r.raise_for_status()
+        params = self.params.copy()
+        params.update(
+            {
+                "include": ",".join(
+                [to_dasherized(relationship) for relationship in relationships if ignore_loaded or not self.is_relationship_loaded(relationship)]
+                )
+            }
+        )
 
-            if isinstance(r.json()["data"], list):
-                self._loaded_relationships[to_dasherized(relationship)] = [
-                    self._loaded_relationships[to_dasherized(relationship)].append(
-                        TYPE_TO_CLASS[item["type"]](data={"data": item})
-                    )
-                    for item in r.json()["data"]
+        r = requests.get(
+            f"https://api.nekosapi.com/v2/{self.resource_name_plural}/{urllib.parse.quote(str(self.id))}",
+            headers=self.headers,
+            params=params,
+        )
+        r.raise_for_status()
+
+        data = r.json()
+
+        for relationship in relationships:
+            if self.is_relationship_loaded(relationship) and ignore_loaded:
+                continue
+
+            refs = data["data"]["relationships"][to_camel_case(relationship)]["data"]
+
+            if isinstance(refs, list):
+                self._loaded_relationships[relationship] = []
+                
+                ids = [
+                    ref["id"] for ref in refs
                 ]
-            elif isinstance(r.json()["data"], dict):
-                self._loaded_relationships[to_dasherized(relationship)] = TYPE_TO_CLASS[
-                    r.json()["data"]["type"]
-                ](data={"data": r.json()["data"]})
+
+                for resource in data["included"]:
+                    if resource["id"] in ids and resource["type"] == refs[ids.index(resource["id"])]["type"]:
+                        self._loaded_relationships[relationship].append(
+                            TYPE_TO_CLASS[resource["type"]](
+                                data={"data": resource, "included": data.get("included", None)}
+                            )
+                        )
+            
+            elif isinstance(refs, dict):
+                for resource in data["included"]:
+                    if resource["id"] == refs["id"] and resource["type"] == refs["type"]:
+                        self._loaded_relationships[relationship] = TYPE_TO_CLASS[resource["type"]](
+                            data={"data": resource, "included": data.get("included", None)}
+                        )
+                        break
+
             else:
-                # The resource has no relationships.
-                self._loaded_relationships[to_dasherized(relationship)] = None
+                # There is no resource, so no extra serialization needs to be
+                # made. `None` is returned directly.
+                self._loaded_relationships[relationship] = None
+        
+        return self
+
+    @prevent_ratelimit
+    def get(id: typing.Union[UUID, str]) -> "Resource":
+        """
+        Returns a resource by it's ID.
+        """
+        r = requests.get(
+            f"https://api.nekosapi.com/v2/{self.resource_name_plural}/{urllib.parse.quote(str(id))}",
+            headers={"Accept": "application/vnd.api+json"},
+        )
+        r.raise_for_status()
+
+        return self.__class__(data=r.json())
 
 
 class Image(Resource):
@@ -378,11 +427,11 @@ class Image(Resource):
         """
 
         class Colors:
-            primary = property(
-                lambda get: self._data["data"]["attributes"]["colors"]["primary"]
-            )
             dominant = property(
                 lambda get: self._data["data"]["attributes"]["colors"]["dominant"]
+            )
+            palette = property(
+                lambda get: self._data["data"]["attributes"]["colors"]["palette"]
             )
 
         return Colors()
@@ -477,27 +526,14 @@ class Image(Resource):
 
     @property
     @resource_relationship
-    def uploader(self) -> User:
+    def uploader(self) -> "User":
         """
         The user who uploaded the image to the API.
         """
         return self._loaded_relationships["uploader"]
 
     @prevent_ratelimit
-    def get(id: typing.Union[UUID, str]) -> "Image":
-        """
-        Returns an image by it's ID.
-        """
-        r = requests.get(
-            f"https://api.nekosapi.com/v2/images/{urllib.parse.quote(str(id))}",
-            headers={"Accept": "application/vnd.api+json"},
-        )
-        r.raise_for_status()
-
-        return Image(data=r.json())
-
-    @prevent_ratelimit
-    def random(**filters) -> "Image":
+    def random(shared_resource_token: typing.Optional[str] = None, **filters) -> "Image":
         """
         Returns a random image.
 
@@ -513,6 +549,9 @@ class Image(Resource):
                 f"filter[{'.'.join([to_camel_case(i) for i in key.split('__', 1)])}]"
             )
             params[query_name] = filters[key]
+
+        if shared_resource_token is not None:
+            params["token"] = shared_resource_token
 
         r = requests.get(
             f"https://api.nekosapi.com/v2/images/random",
