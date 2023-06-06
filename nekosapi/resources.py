@@ -16,13 +16,13 @@ from .exceptions import UnspecifiedResourceError
 
 
 def resource_property(func: typing.Callable):
-    """
-    When a function has this decorator, it means that the function cannot be
+    """When a function has this decorator, it means that the function cannot be
     called without the resource's data being loaded first. If the data is not
     loaded, the Resource._load() method is called before the function
     execution.
 
-    This wrapper also adds the @property decorator to the function.
+    Args:
+        func (typing.Callable): The function to wrap.
     """
 
     def wrapper(*args, **kwargs):
@@ -43,9 +43,11 @@ def resource_property(func: typing.Callable):
 
 
 def resource_relationship(func: typing.Callable):
-    """
-    This decorator loads the relationship data before it is returned by the
+    """This decorator loads the relationship data before it is returned by the
     image. All resource property functions are decorated by this wrapper.
+
+    Args:
+        func (typing.Callable): The function to wrap.
     """
 
     def wrapper(*args, **kwargs):
@@ -206,9 +208,11 @@ def resource_relationship(func: typing.Callable):
 
 
 class Resource:
-    """
-    The base class for all resource classes (Image, User, etc.). It is useful
+    """The base class for all resource classes (Image, User, etc.). It is useful
     for type checking.
+
+    Raises:
+        UnspecifiedResourceError: The resource's ID is not defined.
     """
 
     resource_name: str
@@ -221,9 +225,7 @@ class Resource:
         self._loaded: bool = False
         self._loaded_relationships = {}
 
-        self.headers = {
-            "Accept": "application/vnd.api+json"
-        }
+        self.headers = {"Accept": "application/vnd.api+json"}
         self.params = {}
 
         if "id" in kwargs:
@@ -246,9 +248,7 @@ class Resource:
 
         except AttributeError:
             # The AttributeError is excepted to modify the error's explanation.
-            raise AttributeError(
-                "The object was not assigned to a resource, and therefore you cannot get it's ID."
-            )
+            raise UnspecifiedResourceError()
 
     @property
     def pk(self) -> typing.Union[UUID, str]:
@@ -300,10 +300,13 @@ class Resource:
         return to_dasherized(relationship_name) in self._loaded_relationships
 
     def include(self, *relationships: typing.Tuple[str]) -> "Resource":
-        """
-        If a resource has not been loaded, using this method will add
+        """If a resource has not been loaded, using this method will add
         relationships to the `included` parameter to reduce the amount of
         requests needed to fetch the resource's data and it's relationships.
+
+        Returns:
+            Resource: The instance of the resource. This is useful for chaining
+                      methods.
         """
         return self
 
@@ -313,18 +316,33 @@ class Resource:
         Makes a request to the API's resource endpoint with the `include`
         parameter to fetch many relationships at once.
         """
-        # TODO: Finish this :3
-        if len(relationships) == 1:
+        # Imported here to avoid a circular import error.
+        from .constants import TYPE_TO_CLASS
+
+        for relationship in relationships:
             # Only one relationship to fetch, so the relationship endpoint is
             # used.
             r = requests.get(
-                f"https://api.nekosapi.com/v2/{self.resource_name}/{self.id}/{to_dasherized(relationships[0])}",
+                f"https://api.nekosapi.com/v2/{self.resource_name}/{self.id}/{to_dasherized(relationship)}",
                 headers=self.headers,
-                params=self.params
+                params=self.params,
             )
             r.raise_for_status()
 
-            
+            if isinstance(r.json()["data"], list):
+                self._loaded_relationships[to_dasherized(relationship)] = [
+                    self._loaded_relationships[to_dasherized(relationship)].append(
+                        TYPE_TO_CLASS[item["type"]](data={"data": item})
+                    )
+                    for item in r.json()["data"]
+                ]
+            elif isinstance(r.json()["data"], dict):
+                self._loaded_relationships[to_dasherized(relationship)] = TYPE_TO_CLASS[
+                    r.json()["data"]["type"]
+                ](data={"data": r.json()["data"]})
+            else:
+                # The resource has no relationships.
+                self._loaded_relationships[to_dasherized(relationship)] = None
 
 
 class Image(Resource):

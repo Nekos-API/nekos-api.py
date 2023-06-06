@@ -9,9 +9,14 @@ import typing
 last_request: typing.Optional[datetime] = None
 
 
-def prevent_ratelimit(func: typing.Optional[typing.Callable] = None):
-    """
-    Waits until a new request can be made without getting a 429 status code.
+def prevent_ratelimit(func: typing.Optional[typing.Callable] = None) -> typing.Optional[typing.Callable]:
+    """Waits until a new request can be made without getting a 429 status code.
+
+    Args:
+        func (typing.Optional[typing.Callable], optional): A function to wrap. Defaults to None.
+
+    Returns:
+        typing.Optional[typing.Callable]: A new function will be returned if the func parameter is present.
     """
 
     def sleep():

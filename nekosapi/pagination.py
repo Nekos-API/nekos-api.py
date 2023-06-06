@@ -11,26 +11,27 @@ class PaginatedResult:
     This class handles paginated results. Requests are not made to the API
     until resources are requested. For example:
 
-    ```
-    # No request was made
-    images: PaginatedResult = Image.search(age_rating__iexact="sfw")
+    .. highlight:: python
+    .. code-block:: python
 
-    # The first 50 items are fetched from the API
-    images[0]
+        # No request was made
+        images: PaginatedResult = Image.search(age_rating__iexact="sfw")
 
-    # These items have been previously loaded so no request is made
-    images[0]
-    images[24]
-    images[48]
+        # The first 50 items are fetched from the API
+        images[0]
 
-    # A new request is made to fetch these objects. Since the request allows up
-    # to 50 items per request, items from 50 to 100 will be loaded to prevent
-    # future unnecessary requests.
-    images[57:84]
+        # These items have been previously loaded so no request is made
+        images[0]
+        images[24]
+        images[48]
 
-    # Again, these images have already been loaded so no request is made
-    images[90:95]
-    ```
+        # A new request is made to fetch these objects. Since the request allows up
+        # to 50 items per request, items from 50 to 100 will be loaded to prevent
+        # future unnecessary requests.
+        images[57:84]
+
+        # Again, these images have already been loaded so no request is made
+        images[90:95]
 
     **WARNINGS:**
     Do not use `len(PaginatedResult)`. This will be extremely slow since it
@@ -52,9 +53,14 @@ class PaginatedResult:
         headers: dict = {"Accept": "application/vnd.api+json"},
         page_size: int = 50
     ) -> None:
-        """
-        Initializes the PaginatedResult object with the provided parameters.
+        """Initializes the PaginatedResult object with the provided parameters.
         The object does not make any query until the objects are fetched.
+
+        Args:
+            url (str): The base URL where the resources are located.
+            params (dict, optional): Any aditional query parameters that the request must have. Defaults to {}.
+            headers (_type_, optional): Any aditional headers that the reqiuest must have. Defaults to {"Accept": "application/vnd.api+json"}.
+            page_size (int, optional): The size of the pages to fetch. Defaults to 50 (the max page size allowed by the API).
         """
 
         # The loaded items variable is a dictionary because some indexes may be
@@ -75,9 +81,14 @@ class PaginatedResult:
     def __getitem__(
         self, key: typing.Union[slice, int]
     ) -> typing.Union[object, typing.List[object]]:
-        """
-        Returns the selected items from the page. I.e. `PaginatedResult[5:10]`
+        """Returns the selected items from the page. I.e. `PaginatedResult[5:10]`
         and `PaginatedResult[4]`.
+
+        Args:
+            key (typing.Union[slice, int]): The index or slice of the objects to get.
+
+        Returns:
+            typing.Union[object, typing.List[object]]: The resource or a list of the resources fetched.
         """
         # Imported inside the function to avoid circular imports.
         from .constants import TYPE_TO_CLASS
@@ -210,11 +221,16 @@ class PaginatedResult:
         return item
 
     def _get_best_page(self, item: int) -> typing.Tuple[int]:
-        """
-        This function returns the best limit-offset page that will allow to
-        fetch a specific item while fetching other items for caching.
+        """This function returns the best limit-offset page that will allow to fetch a specific item while fetching other items for caching.
 
-        Returns two values: `limit` and `offset`.
+        Args:
+            item (int): The index of the item that will be fetched. 
+
+        Raises:
+            AlreadyLoadedException: The resource has already been loaded (and it doesn't need refetching).
+
+        Returns:
+            typing.Tuple[int]: A tuple containing two items, the limit and the offset of the page.
         """
         if self._loaded_items.get(item, None) is not None:
             raise AlreadyLoadedException()
