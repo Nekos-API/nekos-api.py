@@ -4,6 +4,7 @@ import requests
 
 from .ratelimiting import prevent_ratelimit
 from .exceptions import AlreadyLoadedException
+from .utils import to_dasherized
 
 
 class PaginatedResult:
@@ -51,7 +52,7 @@ class PaginatedResult:
         url: str,
         params: dict = {},
         headers: dict = {"Accept": "application/vnd.api+json"},
-        page_size: int = 50
+        page_size: int = 50,
     ) -> None:
         """Initializes the PaginatedResult object with the provided parameters.
         The object does not make any query until the objects are fetched.
@@ -120,7 +121,9 @@ class PaginatedResult:
 
                 for offset in offsets:
                     params = self.params
-                    params.update({"page[limit]": self.page_size, "page[offset]": offset})
+                    params.update(
+                        {"page[limit]": self.page_size, "page[offset]": offset}
+                    )
 
                     prevent_ratelimit()
 
@@ -224,7 +227,7 @@ class PaginatedResult:
         """This function returns the best limit-offset page that will allow to fetch a specific item while fetching other items for caching.
 
         Args:
-            item (int): The index of the item that will be fetched. 
+            item (int): The index of the item that will be fetched.
 
         Raises:
             AlreadyLoadedException: The resource has already been loaded (and it doesn't need refetching).
@@ -349,3 +352,14 @@ class PaginatedResult:
             self._count = r.json()["meta"]["pagination"]["count"]
 
         return self._count
+
+    def include(self, *relationships) -> "PaginatedResult":
+        if "include" in self.params:
+            self.params["include"] += "," + ",".join(
+                [to_dasherized(relationship) for relationship in relationships]
+            )
+        else:
+            self.params["include"] = ",".join(
+                [to_dasherized(relationship) for relationship in relationships]
+            )
+        return self
