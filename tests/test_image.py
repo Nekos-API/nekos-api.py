@@ -18,7 +18,6 @@ def test_random_image():
 
 def test_search_image():
     imgs = Image.search(age_rating__iexact='sfw')
-    imgs.page_size = 25
     
     i = 0
     while i in range(50):
