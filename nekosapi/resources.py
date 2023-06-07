@@ -10,7 +10,7 @@ import dateutil
 
 from .pagination import PaginatedResult
 from .ratelimiting import prevent_ratelimit
-from .types import VerificationStatus, AgeRating
+from .types import VerificationStatus, AgeRating, Sub, ListWithRefs
 from .utils import to_camel_case, to_dasherized, to_snake_case_from_dasherized
 from .exceptions import UnspecifiedResourceError
 
@@ -42,7 +42,7 @@ def resource_property(func: typing.Callable):
     return wrapper
 
 
-def resource_relationship(func: typing.Callable):
+def resource_relationship(func: typing.Callable, related_resource_name: typing.Optional[str] = None):
     """This decorator loads the relationship data before it is returned by the
     image. All resource property functions are decorated by this wrapper.
 
@@ -551,6 +551,14 @@ class Image(Resource):
         """
         return self._loaded_relationships["uploader"]
 
+    @property
+    @resource_relationship
+    def categories(self) -> typing.List["Category"]:
+        """
+        The categories the image belongs to.
+        """
+        return self._loaded_relationships["categories"]
+
     @prevent_ratelimit
     def random(
         shared_resource_token: typing.Optional[str] = None, **filters
@@ -747,3 +755,89 @@ class User(Resource):
             joined = property(lambda get: self._data["data"]["attributes"]["joined"])
 
         return Timestamps()
+
+    @property
+    @resource_relationship
+    def followers(self) -> list:
+        """
+        The followers of the user.
+        """
+        return self._loaded_relationships["followers"]
+
+    @property
+    @resource_relationship
+    def following(self) -> list:
+        """Returns a list of users that the usser is following.
+
+        Returns:
+            list: A list of users.
+        """
+        return self._loaded_relationships["following"]
+
+    def __str__(self):
+        if self.is_loaded():
+            return self.username
+        else:
+            return self.id
+
+
+class Category(Resource):
+    """
+    The representation of a category.
+    """
+
+    resource_name = "category"
+    resource_name_plural = "categories"
+
+    @property
+    @resource_property
+    def name(self) -> str:
+        """
+        The name of the category.
+        """
+        return self._data["data"]["attributes"]["name"]
+
+    @property
+    @resource_property
+    def description(self) -> str:
+        """
+        The description of the category.
+        """
+        return self._data["data"]["attributes"]["description"]
+
+    @property
+    @resource_property
+    def sub(self) -> Sub:
+        """
+        The sub of the category.
+        """
+        return Sub(self._data["data"]["attributes"]["sub"])
+
+    @property
+    @resource_property
+    def is_nsfw(self) -> bool:
+        """
+        Whether the category's name or description is NSFW. Usually this also
+        means that the images/GIFs being categorized are also NSFW.
+        """
+        return self._data["data"]["attributes"]["isNsfw"]
+
+    @property
+    @resource_property
+    def timestamps(self) -> object:
+        """
+        The timestamps of the category.
+        """
+        class Timestamps:
+            created = property(lambda get: self._data["data"]["attributes"]["timestamps"]["created"])
+            updated = property(lambda get: self._data["data"]["attributes"]["timestamps"]["updated"])
+
+        return Timestamps()
+
+    @property
+    @resource_relationship
+    def images(self) -> list:
+        """
+        The images of the category.
+        """
+        return self._loaded_relationships["images"]
