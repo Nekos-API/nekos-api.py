@@ -72,6 +72,7 @@ class PaginatedResult:
         self._count: typing.Optional[int] = None
 
         self._iter_current = 0
+        self._break_iter = False
 
         self.url = url
         self.params = params
@@ -140,7 +141,11 @@ class PaginatedResult:
                         )
                         n += 1
 
-                    self._count = r.json()["meta"]["pagination"]["count"]
+                    self._count = (
+                        r.json()["meta"]["pagination"]["count"]
+                        if "meta" in r.json()
+                        else None
+                    )
 
             # Returns a list with all the items requested
             return [self._loaded_items[i] for i in sliced_indexes]
@@ -172,7 +177,11 @@ class PaginatedResult:
                     )
                     n += 1
 
-                self._count = r.json()["meta"]["pagination"]["count"]
+                self._count = (
+                    r.json()["meta"]["pagination"]["count"]
+                    if "meta" in r.json()
+                    else None
+                )
 
             return self._loaded_items[key]
 
@@ -195,6 +204,9 @@ class PaginatedResult:
         if item is None:
             # This item has not been loaded yet, so a request is made to get it
             # from the API.
+            if self._break_iter:
+                raise StopIteration()
+
             limit, offset = self._get_best_page(self._iter_current)
 
             params = self.params
@@ -215,9 +227,19 @@ class PaginatedResult:
                 n += 1
 
             # Cache the total amount of items.
-            self._count = r.json()["meta"]["pagination"]["count"]
+            self._count = (
+                r.json()["meta"]["pagination"]["count"]
+                if "meta" in r.json()
+                else len(r.json()["data"])
+            )
+            if "meta" not in r.json():
+                # Will stop iterating after no more loaded items are left
+                self._break_iter = True
 
             item = self._loaded_items[self._iter_current]
+
+        if self.count() is None or self._iter_current >= self.count():
+            raise StopIteration()
 
         self._iter_current += 1
 
@@ -306,7 +328,6 @@ class PaginatedResult:
         # Return the limit and offset.
         return next_item - prev_item, prev_item
 
-    @property
     def count(self) -> int:
         """
         Returns the total amount of resources.
@@ -315,10 +336,10 @@ class PaginatedResult:
         from .constants import TYPE_TO_CLASS
 
         if self._count is None:
+            loaded_item_keys = list(self._loaded_items.keys())
+            loaded_item_keys.sort()
             first_loaded_item = (
-                list(self._loaded_items.keys()).sort()[0]
-                if len(self._loaded_items.keys()) != 0
-                else None
+                loaded_item_keys[0] if len(self._loaded_items.keys()) != 0 else None
             )
             offset = None
 
@@ -344,12 +365,18 @@ class PaginatedResult:
 
             n = 0
             for item in r.json()["data"]:
-                self._loaded_items[offset + n] = TYPE_TO_CLASS[item["type"]](
+                self._loaded_items[
+                    offset + n if offset is not None else n
+                ] = TYPE_TO_CLASS[item["type"]](
                     data={"data": item, "included": r.json().get("included", None)}
                 )
                 n += 1
 
-            self._count = r.json()["meta"]["pagination"]["count"]
+            self._count = (
+                r.json()["meta"]["pagination"]["count"]
+                if "meta" in r.json()
+                else len(r.json()["data"])
+            )
 
         return self._count
 
