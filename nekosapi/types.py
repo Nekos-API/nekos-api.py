@@ -24,13 +24,13 @@ class VerificationStatus(Enum):
                             and was accepted in the API. These images can be
                             seen by anyone.
 
-    
+
     """
-    
-    NOT_REVIEWED = 'not_reviewed'
-    ON_REVIEW = 'on_review'
-    VERIFIED = 'verified'
-    DECLINED = 'declined'
+
+    NOT_REVIEWED = "not_reviewed"
+    ON_REVIEW = "on_review"
+    VERIFIED = "verified"
+    DECLINED = "declined"
 
 
 class AgeRating(Enum):
@@ -58,8 +58,29 @@ class AgeRating(Enum):
                              must not see these images.
     """
 
-    SAFE_FOR_WORK = 'sfw'
-    QUESTIONABLE = 'questionable'
-    SUGGESTIVE = 'suggestive'
-    BORDERLINE = 'borderline'
-    EXPLICIT = 'explicit'
+    SAFE_FOR_WORK = "sfw"
+    QUESTIONABLE = "questionable"
+    SUGGESTIVE = "suggestive"
+    BORDERLINE = "borderline"
+    EXPLICIT = "explicit"
+
+
+class Sub(Enum):
+    """The 'type' of the category. In other words, what is the category categorizing.
+
+    Props:
+        CHARACTER (str): The characters that appear in the image/GIF
+        FORMAT (str):    The format of the image. Style, size, etc.
+        SETTING (str):   The setting of the image. The weather, the mood, things
+                         in the scene, etc.
+    """
+
+    CHARACTER = "character"
+    FORMAT = "format"
+    SETTING = "setting"
+
+
+class ListWithRefs(list):
+
+    def refs(self):
+        return [{"type": item.id, "id": item.id} for item in self]
