@@ -230,9 +230,9 @@ class Resource:
 
         if "id" in kwargs:
             self._id = (
-                UUID(kwargs["ID"])
-                if not isinstance(kwargs["ID"], UUID)
-                else kwargs["ID"]
+                UUID(kwargs["id"])
+                if not isinstance(kwargs["id"], UUID)
+                else kwargs["id"]
             )
 
         if "data" in kwargs:
@@ -643,6 +643,15 @@ class Image(Resource):
         # the resources are required.
         return PaginatedResult(url="https://api.nekosapi.com/v2/images", params=params)
 
+    @prevent_ratelimit
+    def like(self):
+        """
+        Like an image.
+        """
+        r = requests.patch(
+            f"https://api.nekosapi.com/v2/{self.id}/"
+        )
+
 
 class User(Resource):
     """
@@ -774,6 +783,30 @@ class User(Resource):
         """
         return self._loaded_relationships["following"]
 
+    @property
+    @resource_relationship
+    def liked_images(self) -> list:
+        """
+        The liked images of the user.
+        """
+        return self._loaded_relationships["likedImages"]
+
+    @property
+    @resource_relationship
+    def saved_images(self) -> list:
+        """
+        The saved images of the user.
+        """
+        return self._loaded_relationships["savedImages"]
+
+    @property
+    @resource_relationship
+    def followed_categories(self) -> list:
+        """
+        The followed categories of the user.
+        """
+        return self._loaded_relationships["followedCategories"]
+
     def __str__(self):
         if self.is_loaded():
             return self.username
@@ -841,3 +874,11 @@ class Category(Resource):
         The images of the category.
         """
         return self._loaded_relationships["images"]
+
+    @property
+    @resource_relationship
+    def followers(self) -> list:
+        """
+        The followers of the category.
+        """
+        return self._loaded_relationships["followers"]
